@@ -1,0 +1,42 @@
+Date: Sat, 14 Feb 2026 06:20:00 GMT
+From: Anonymous Digest <digest@noid.example>
+To: RECIPIENT@example.com
+Subject: No Message-ID here, dedupe must fall back
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Daily Ledger</title>
+<style type="text/css">
+  body { margin:0; padding:0; }
+  .preheader { color:transparent; display:none!important; font-size:1px; max-height:0; max-width:0; }
+</style>
+</head>
+<body bgcolor="#f4f4f7" style="margin:0;padding:0;">
+<div class="preheader">The one thing nobody is saying about the market this week.&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f4f7">
+<tr><td align="center" style="padding:16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" bgcolor="#ffffff" class="wrapper">
+<tr><td class="header-logo" style="padding:20px;">
+  <a href="https://example.com/"><img src="https://cdn.example.com/logo.png" width="180" alt="The Daily Ledger" /></a>
+</td></tr>
+<tr><td style="padding:0 32px 12px;"><p style="font-family:Georgia,serif;font-size:16px;line-height:24px;">Markets spent most of Tuesday pretending that nothing had happened, which in this cycle is its own kind of news. The index closed up eleven points, a move so small it barely qualifies as an opinion, and yet the underlying plumbing told a much less calm story.</p></td></tr><tr><td style="padding:0 32px 12px;"><p style="font-family:Georgia,serif;font-size:16px;line-height:24px;">Underlying yields rose for the fourth straight session. That matters because everything in the last two years has been priced off the assumption that borrowing costs had peaked. Four straight up days in the long bond is the market starting to doubt that assumption out loud.</p></td></tr><tr><td style="padding:0 32px 12px;"><p style="font-family:Georgia,serif;font-size:16px;line-height:24px;">The energy complex was the other tell. Crude sold off hard into the London close, then quietly recovered in the American afternoon. Nobody at the exchanges will say why, and the volume profile suggests a single large seller rather than a change in fundamentals.</p></td></tr><tr><td style="padding:0 32px 12px;"><p style="font-family:Georgia,serif;font-size:16px;line-height:24px;">“What we are hearing from clients is not fear, it is fatigue,” said one rate strategist at a large dealer bank, speaking on condition of anonymity because he is not authorized to talk to press. “Everyone wants the all-clear signal, and nobody wants to be the one who says it too early.”</p></td></tr><tr><td class="footer" style="padding:24px;font-size:12px;color:#9aa;line-height:18px;">
+  <p>You are receiving this email because you subscribed to The Daily Ledger.</p>
+  <p><a href="https://example.com/unsubscribe?t=REDACTEDTOKEN">Unsubscribe</a> &nbsp;|&nbsp;
+     <a href="https://example.com/preferences?t=REDACTEDTOKEN">Manage preferences</a> &nbsp;|&nbsp;
+     <a href="https://example.com/view/no-message-id">View this email in your browser</a></p>
+  <p>The Daily Ledger, 1234 News Way, Suite 100, New York, NY 10001</p>
+  <p>Copyright &#169; 2026 Ledger Media Group. All rights reserved.</p>
+  <p><a href="https://twitter.com/example">Twitter</a> &#183;
+     <a href="https://facebook.com/example">Facebook</a> &#183;
+     <a href="https://linkedin.com/company/example">LinkedIn</a></p>
+  <img src="https://track.example.com/open/no-message-id" width="1" height="1" alt="" border="0" />
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

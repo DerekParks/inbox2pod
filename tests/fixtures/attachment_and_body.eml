@@ -1,0 +1,103 @@
+Message-ID: <179192988817.2159538.1689762247878200132@mixed.example>
+Date: Mon, 16 Feb 2026 00:00:00 +0000
+From: Ledger Research <research@mixed.example>
+To: RECIPIENT@example.com
+Subject: The quarterly, plus the appendix you asked for
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="===============8385479462770953754=="
+
+--===============8385479462770953754==
+Content-Type: multipart/alternative;
+ boundary="===============5595216641232950125=="
+
+--===============5595216641232950125==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+The quarterly is attached. Summary: yields up, breadth narrow, positioning cr=
+owded.
+
+--===============5595216641232950125==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN">
+<html xmlns=3D"http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8" />
+<meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D1.0"=
+ />
+<title>The Daily Ledger</title>
+<style type=3D"text/css">
+  body { margin:0; padding:0; }
+  .preheader { color:transparent; display:none!important; font-size:1px; max-=
+height:0; max-width:0; }
+</style>
+</head>
+<body bgcolor=3D"#f4f4f7" style=3D"margin:0;padding:0;">
+<div class=3D"preheader">The one thing nobody is saying about the market this=
+ week.&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&=
+#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&=
+#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&=
+#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;</div>
+<table role=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"=
+0" bgcolor=3D"#f4f4f7">
+<tr><td align=3D"center" style=3D"padding:16px;">
+<table role=3D"presentation" width=3D"600" cellpadding=3D"0" cellspacing=3D"0=
+" bgcolor=3D"#ffffff" class=3D"wrapper">
+<tr><td class=3D"header-logo" style=3D"padding:20px;">
+  <a href=3D"https://example.com/"><img src=3D"https://cdn.example.com/logo.p=
+ng" width=3D"180" alt=3D"The Daily Ledger" /></a>
+</td></tr>
+<tr><td style=3D"padding:0 32px 12px;"><p style=3D"font-family:Georgia,serif;=
+font-size:16px;line-height:24px;">Markets spent most of Tuesday pretending th=
+at nothing had happened, which in this cycle is its own kind of news. The ind=
+ex closed up eleven points, a move so small it barely qualifies as an opinion=
+, and yet the underlying plumbing told a much less calm story.</p></td></tr><=
+tr><td style=3D"padding:0 32px 12px;"><p style=3D"font-family:Georgia,serif;f=
+ont-size:16px;line-height:24px;">Underlying yields rose for the fourth straig=
+ht session. That matters because everything in the last two years has been pr=
+iced off the assumption that borrowing costs had peaked. Four straight up day=
+s in the long bond is the market starting to doubt that assumption out loud.<=
+/p></td></tr><tr><td style=3D"padding:0 32px 12px;"><p style=3D"font-family:G=
+eorgia,serif;font-size:16px;line-height:24px;">The energy complex was the oth=
+er tell. Crude sold off hard into the London close, then quietly recovered in=
+ the American afternoon. Nobody at the exchanges will say why, and the volume=
+ profile suggests a single large seller rather than a change in fundamentals.=
+</p></td></tr><tr><td class=3D"footer" style=3D"padding:24px;font-size:12px;c=
+olor:#9aa;line-height:18px;">
+  <p>You are receiving this email because you subscribed to The Daily Ledger.=
+</p>
+  <p><a href=3D"https://example.com/unsubscribe?t=3DREDACTEDTOKEN">Unsubscrib=
+e</a> &nbsp;|&nbsp;
+     <a href=3D"https://example.com/preferences?t=3DREDACTEDTOKEN">Manage pre=
+ferences</a> &nbsp;|&nbsp;
+     <a href=3D"https://example.com/view/attachment">View this email in your =
+browser</a></p>
+  <p>The Daily Ledger, 1234 News Way, Suite 100, New York, NY 10001</p>
+  <p>Copyright &#169; 2026 Ledger Media Group. All rights reserved.</p>
+  <p><a href=3D"https://twitter.com/example">Twitter</a> &#183;
+     <a href=3D"https://facebook.com/example">Facebook</a> &#183;
+     <a href=3D"https://linkedin.com/company/example">LinkedIn</a></p>
+  <img src=3D"https://track.example.com/open/attachment" width=3D"1" height=
+=3D"1" alt=3D"" border=3D"0" />
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+
+--===============5595216641232950125==--
+
+--===============8385479462770953754==
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="appendix.pdf"
+MIME-Version: 1.0
+
+JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyA+PgplbmRvYmoKdHJhaWxl
+cgo8PCAvUm9vdCAxIDAgUiA+PgolJUVPRgo=
+
+--===============8385479462770953754==--

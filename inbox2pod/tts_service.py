@@ -1,0 +1,147 @@
+"""
+Service for interacting with the TTS service
+"""
+
+import os
+import time
+
+import requests
+from wakeonlan import send_magic_packet
+
+from inbox2pod.config import Config
+
+
+class PATHS:
+    """Paths for the TTS service."""
+
+    SYNTHESIZE = "tts/synthesize"
+    JOBS = "tts/jobs"
+    DOWNLOAD = "tts/jobs/{job_id}/download"
+    HEALTH = "health/check"
+
+
+class TTSService:
+    """Service for interacting with the TTS service."""
+
+    def __init__(self):
+        self.root_url = Config.TTS_ROOT_URL
+        if self.root_url.endswith("/"):
+            self.root_url = self.root_url[:-1]
+
+        self.mp3_storage_path = Config.MP3_STORAGE_PATH
+        if not os.path.exists(self.mp3_storage_path):
+            os.makedirs(self.mp3_storage_path)
+
+        self.synthesize_path = f"{self.root_url}/{PATHS.SYNTHESIZE}"
+        self.jobs_path = f"{self.root_url}/{PATHS.JOBS}"
+        self.download_path = f"{self.root_url}/{PATHS.DOWNLOAD}"
+        self.health_path = f"{self.root_url}/{PATHS.HEALTH}"
+
+    def submit_tts(self, text: str) -> str:
+        """Submit a TTS request and return the job id.
+
+        Args:
+            text: The text to be used for TTS
+
+        Returns:
+            str: The job id of the TTS request
+        """
+
+        opts = {"text": text, "model": Config.TTS_MODEL}
+        if Config.TTS_VOICE and len(Config.TTS_VOICE) > 0:
+            opts["voice"] = Config.TTS_VOICE
+
+        response = requests.post(
+            self.synthesize_path,
+            json=opts,
+        )
+        response.raise_for_status()
+        return response.json()["job_id"]
+
+    def get_jobs(self) -> tuple[list[str], list[str]]:
+        """Get the TTS jobs from the TTS service.
+
+        Jobs in a failed/error state are omitted so the caller treats
+        them as gone and retries them from scratch.
+
+        Returns:
+            tuple[list[str], list[str]]: The list of completed and ongoing TTS jobs
+        """
+        response = requests.get(self.jobs_path)
+        response.raise_for_status()
+        res_json = response.json()["jobs"]
+        completed_jobs = []
+        ongoing_jobs = []
+        for job in res_json:
+            status = job["status"].lower()
+            if status == "completed":
+                completed_jobs.append(job["job_id"])
+            elif status in ("failed", "error"):
+                continue
+            else:
+                ongoing_jobs.append(job["job_id"])
+
+        return completed_jobs, ongoing_jobs
+
+    def download_mp3(self, job_id: str) -> str:
+        """Download the mp3 for the job.
+
+        Args:
+            job_id: The job id to download the mp3 for
+
+        Returns:
+            str: The path where the mp3 was saved
+        """
+        response = requests.get(self.download_path.format(job_id=job_id))
+        response.raise_for_status()
+        saved_path = os.path.join(self.mp3_storage_path, f"{job_id}.mp3")
+        with open(saved_path, "wb") as f:
+            f.write(response.content)
+        return saved_path
+
+    def delete_job(self, job_id: str) -> None:
+        """Delete the TTS job from the TTS service.
+
+        Args:
+            job_id: The job id to delete
+        """
+        response = requests.delete(f"{self.jobs_path}/{job_id}")
+        response.raise_for_status()
+
+    def check_health(self) -> bool:
+        """Check the health of the TTS service."""
+        try:
+            response = requests.get(self.health_path, timeout=5)
+        except requests.exceptions.RequestException as e:
+            print(f"TTS health check failed: {e}")
+            return False
+        return response.status_code == 200
+
+    def wake_and_wait_healthy(self) -> bool:
+        """Ensure the TTS host is healthy, sending a WoL magic packet if needed.
+
+        Returns True if healthy (either initially or after wake), False otherwise.
+        """
+        if self.check_health():
+            return True
+
+        if not Config.TTS_WOL_ENABLED:
+            return False
+
+        for attempt in range(1, Config.TTS_WOL_MAX_RETRIES + 1):
+            print(
+                f"Sending WoL magic packet to {Config.TTS_WOL_MAC} "
+                f"(attempt {attempt}/{Config.TTS_WOL_MAX_RETRIES})"
+            )
+            send_magic_packet(
+                Config.TTS_WOL_MAC,
+                ip_address=Config.TTS_WOL_BROADCAST,
+                port=Config.TTS_WOL_PORT,
+            )
+            time.sleep(Config.TTS_WOL_RETRY_DELAY)
+            if self.check_health():
+                print(f"TTS host is healthy after {attempt} wake attempt(s)")
+                return True
+
+        print(f"TTS host did not wake after {Config.TTS_WOL_MAX_RETRIES} attempts")
+        return False
