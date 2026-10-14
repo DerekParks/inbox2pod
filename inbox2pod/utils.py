@@ -21,19 +21,6 @@ def sha256_hex(value: str | bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def oxford_join(items: list[str]) -> str:
-    """Join a list of items with commas and "and"."""
-    items = [str(item) for item in items if item]
-    if not items:
-        return ""
-    if len(items) == 1:
-        return items[0]
-    if len(items) == 2:
-        return f"{items[0]} and {items[1]}"
-
-    return f"{', '.join(items[:-1])}, and {items[-1]}"
-
-
 def to_utc(dt: datetime) -> datetime:
     """Attach UTC to a naive datetime, convert it if it is aware."""
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)

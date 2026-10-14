@@ -40,6 +40,7 @@ class Config:
     IMAP_PASSWORD = os.getenv("IMAP_PASSWORD")
     IMAP_FOLDER = os.getenv("IMAP_FOLDER", "INBOX")
     IMAP_POLL_MINUTES = _int("IMAP_POLL_MINUTES", "5")
+    IMAP_MAX_EMAILS_PER_POLL = _int("IMAP_MAX_EMAILS_PER_POLL", "25")
     IMAP_AFTER_ACTION = os.getenv("IMAP_AFTER_ACTION", "mark_seen").strip().lower()
 
     # Ingest - SMTP receiver (the power path)
@@ -74,6 +75,8 @@ class Config:
     FEED_TITLE = os.getenv("FEED_TITLE", "Inbox2Pod")
     FEED_DESCRIPTION = os.getenv("FEED_DESCRIPTION", "My newsletters, read aloud.")
     FEED_AUTHOR = os.getenv("FEED_AUTHOR", "Inbox2Pod")
+    FEED_OWNER_EMAIL = os.getenv("FEED_OWNER_EMAIL", "")
+    FEED_LANGUAGE = os.getenv("FEED_LANGUAGE", "en-us")
     FEED_SITE_URL = os.getenv("FEED_SITE_URL", "")
     FEED_TOKEN = os.getenv("FEED_TOKEN", "").strip()
     FEED_MAX_EPISODES = _int("FEED_MAX_EPISODES", "1000")
@@ -119,7 +122,8 @@ class Config:
 
         sender = sender_email.strip().lower()
         sender_domain = sender.rsplit("@", 1)[-1]
-        for entry in cls.SENDER_ALLOWLIST:
+        for raw_entry in cls.SENDER_ALLOWLIST:
+            entry = raw_entry.strip().lower()
             if entry.startswith("@"):
                 if sender_domain == entry[1:]:
                     return True

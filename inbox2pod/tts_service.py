@@ -28,14 +28,17 @@ class TTSService:
         if self.root_url.endswith("/"):
             self.root_url = self.root_url[:-1]
 
-        self.mp3_storage_path = Config.MP3_STORAGE_PATH
-        if not os.path.exists(self.mp3_storage_path):
-            os.makedirs(self.mp3_storage_path)
+        os.makedirs(Config.MP3_STORAGE_PATH, exist_ok=True)
 
         self.synthesize_path = f"{self.root_url}/{PATHS.SYNTHESIZE}"
         self.jobs_path = f"{self.root_url}/{PATHS.JOBS}"
         self.download_path = f"{self.root_url}/{PATHS.DOWNLOAD}"
         self.health_path = f"{self.root_url}/{PATHS.HEALTH}"
+
+    @property
+    def mp3_storage_path(self) -> str:
+        """Where audio is kept. Read live so a changed Config takes effect."""
+        return Config.MP3_STORAGE_PATH
 
     def submit_tts(self, text: str) -> str:
         """Submit a TTS request and return the job id.

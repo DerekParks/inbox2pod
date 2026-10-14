@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="RSS feed">
+  <rect width="24" height="24" rx="4" fill="#f2c14b"/>
+  <circle cx="6.2" cy="17.8" r="2.1" fill="#14273c"/>
+  <path d="M4.2 11.2a8.6 8.6 0 0 1 8.6 8.6h2.6A11.2 11.2 0 0 0 4.2 8.6z" fill="#14273c"/>
+  <path d="M4.2 5a14.8 14.8 0 0 1 14.8 14.8h2.6A17.4 17.4 0 0 0 4.2 2.4z" fill="#14273c"/>
+</svg>

@@ -10,10 +10,10 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from inbox2pod.config import Config
 
-# Database setup
+# Database setup. The engine is built on first use and cached per URI so that
+# changing Config.DATABASE_URI (tests, embedders) before first use takes effect.
 Base = declarative_base()
-engine = create_engine(Config.DATABASE_URI, future=True)
-Session = sessionmaker(bind=engine, future=True)
+_engines = {}
 
 
 def _ensure_sqlite_dir(database_uri: str) -> None:
@@ -28,7 +28,24 @@ def _ensure_sqlite_dir(database_uri: str) -> None:
     os.makedirs(parent, exist_ok=True)
 
 
-_ensure_sqlite_dir(Config.DATABASE_URI)
+def get_engine():
+    """Get (and on first call create) the engine for the configured database."""
+    engine = _engines.get(Config.DATABASE_URI)
+    if engine is None:
+        _ensure_sqlite_dir(Config.DATABASE_URI)
+        engine = create_engine(Config.DATABASE_URI, future=True)
+        Base.metadata.create_all(engine)
+        _engines[Config.DATABASE_URI] = engine
+    return engine
+
+
+def make_session():
+    """Get a new database session.
+
+    Sessions are short-lived and objects are handed back to callers after the
+    session closes, so commits must not expire their attributes.
+    """
+    return sessionmaker(bind=get_engine(), future=True, expire_on_commit=False)()
 
 
 class Episode(Base):
@@ -53,21 +70,18 @@ class Episode(Base):
     mp3 = Column(String)
 
 
-# Create tables if they don't exist
-Base.metadata.create_all(engine)
-
 
 class EpisodeOps:
     """Operations for the Episode model."""
 
     def get_episode(self, episode_id: str) -> Episode | None:
         """Get one episode by id."""
-        with Session() as session:
+        with make_session() as session:
             return session.get(Episode, episode_id)
 
     def episode_exists(self, episode_id: str) -> bool:
         """Whether an episode id is already stored."""
-        with Session() as session:
+        with make_session() as session:
             return session.query(Episode.id).filter_by(id=episode_id).first() is not None
 
     def get_episodes_with_mp3(self, feed: str | None = None) -> list[Episode]:
@@ -76,7 +90,7 @@ class EpisodeOps:
         Args:
             feed: Only episodes on this feed; None for every feed
         """
-        with Session() as session:
+        with make_session() as session:
             query = session.query(Episode).filter(Episode.mp3 != None)  # noqa: E711
             if feed:
                 query = query.filter(Episode.feed == feed)
@@ -84,7 +98,7 @@ class EpisodeOps:
 
     def get_episode_ids(self) -> set[str]:
         """Get the episode ids."""
-        with Session() as session:
+        with make_session() as session:
             return {episode.id for episode in session.query(Episode).all()}
 
     def get_episodes_to_tts(self) -> list[Episode]:
@@ -93,7 +107,7 @@ class EpisodeOps:
         Episodes whose extraction came back empty are skipped: they would turn
         into four-second episodes of nothing.
         """
-        with Session() as session:
+        with make_session() as session:
             return (
                 session.query(Episode)
                 .filter(
@@ -107,7 +121,7 @@ class EpisodeOps:
 
     def has_submitted_tts_jobs(self) -> bool:
         """Return True if there are episodes with a TTS job id but no mp3 yet."""
-        with Session() as session:
+        with make_session() as session:
             return (
                 session.query(Episode)
                 .filter(Episode.tts_job_id != None, Episode.mp3 == None)  # noqa: E711
@@ -117,7 +131,7 @@ class EpisodeOps:
 
     def get_job_ids(self) -> set[str]:
         """Get the TTS job ids this database is waiting on."""
-        with Session() as session:
+        with make_session() as session:
             return {episode.tts_job_id for episode in session.query(Episode).all() if episode.tts_job_id}
 
     def null_episodes_that_tts_doesnt_know_about(self, known_jobs: set[str]) -> list[tuple[str, str]]:
@@ -132,7 +146,7 @@ class EpisodeOps:
             list[tuple[str, str]]: (episode_id, old_job_id) pairs that were nulled.
         """
         result = []
-        with Session() as session:
+        with make_session() as session:
             waiting_episodes = (
                 session.query(Episode)
                 .filter(Episode.tts_job_id != None, Episode.mp3 == None)  # noqa: E711
@@ -152,7 +166,7 @@ class EpisodeOps:
         Returns:
             bool: False when no episode is waiting on that job id.
         """
-        with Session() as session:
+        with make_session() as session:
             episode = session.query(Episode).filter_by(tts_job_id=job_id).first()
             if episode is None:
                 return False
@@ -162,7 +176,7 @@ class EpisodeOps:
 
     def mark_tts_submitted(self, episode_id: str, job_id: str) -> bool:
         """Mark an episode as submitted to TTS."""
-        with Session() as session:
+        with make_session() as session:
             episode = session.get(Episode, episode_id)
             if episode is None:
                 return False
@@ -176,7 +190,7 @@ class EpisodeOps:
         Returns:
             bool: True when the episode was inserted, False when the id already existed.
         """
-        with Session() as session:
+        with make_session() as session:
             if session.get(Episode, episode.id) is not None:
                 return False
             session.add(episode)
@@ -192,7 +206,7 @@ class EpisodeOps:
         extraction_ok: bool,
     ) -> bool:
         """Replace the extracted text of an episode (used by re-extract-from-raw)."""
-        with Session() as session:
+        with make_session() as session:
             episode = session.get(Episode, episode_id)
             if episode is None:
                 return False
@@ -205,26 +219,27 @@ class EpisodeOps:
 
     def delete_episode(self, episode_id: str) -> int:
         """Delete an episode from the database."""
-        with Session() as session:
+        with make_session() as session:
             result = session.query(Episode).filter(Episode.id == episode_id).delete()
             session.commit()
             return result
 
-    def delete_episodes_published_before(self, cutoff: datetime) -> list[str | None]:
+    def delete_episodes_published_before(self, cutoff: datetime) -> list[tuple[str | None, str | None]]:
         """Delete episodes published before the cutoff.
 
         Args:
             cutoff: Naive UTC datetime
 
         Returns:
-            list[str | None]: The mp3 filename of each deleted episode, None for those without audio
+            list[tuple[str | None, str | None]]: (mp3 filename, raw path) for each
+                deleted episode; either half is None when the episode had neither.
         """
-        with Session() as session:
+        with make_session() as session:
             expired = session.query(Episode).filter(Episode.published_at < cutoff)
-            mp3s = [episode.mp3 for episode in expired]
+            files = [(episode.mp3, episode.raw_path) for episode in expired]
             expired.delete()
             session.commit()
-            return mp3s
+            return files
 
     def get_episodes_page(self, page: int, per_page: int) -> tuple[list[Episode], int]:
         """Get one page of episodes, newest first.
@@ -232,7 +247,7 @@ class EpisodeOps:
         Returns:
             tuple[list[Episode], int]: The episodes on the page and the total episode count
         """
-        with Session() as session:
+        with make_session() as session:
             query = session.query(Episode)
             total = query.count()
             episodes = (
@@ -242,20 +257,20 @@ class EpisodeOps:
 
     def get_all_episodes(self, sort_by_published_at: bool = False) -> list[Episode]:
         """Get all episodes."""
-        with Session() as session:
+        with make_session() as session:
             if sort_by_published_at:
                 return session.query(Episode).order_by(Episode.published_at.desc()).all()
             return session.query(Episode).all()
 
     def get_latest_episode_date(self) -> datetime | None:
         """The newest published_at in the database."""
-        with Session() as session:
+        with make_session() as session:
             episode = session.query(Episode).order_by(Episode.published_at.desc()).first()
             return episode.published_at if episode else None
 
     def clear_tts(self, episode_id: str) -> bool:
         """Clear the TTS job id and mp3 path for an episode."""
-        with Session() as session:
+        with make_session() as session:
             episode = session.get(Episode, episode_id)
             if episode is None:
                 return False
@@ -266,6 +281,6 @@ class EpisodeOps:
 
     def get_episode_mp3(self, episode_id: str) -> str | None:
         """Get an episode's mp3 path by id."""
-        with Session() as session:
+        with make_session() as session:
             episode = session.get(Episode, episode_id)
             return episode.mp3 if episode else None

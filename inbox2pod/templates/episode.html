@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{{ episode.title }}</title>
+        <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+        <link
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+            rel="stylesheet"
+        />
+    </head>
+    <body class="bg-gray-100 min-h-screen font-sans" x-data="episodePage">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <header class="mb-6">
+                <a href="{{ tokenized('/') }}" class="text-sm text-indigo-600 hover:underline"
+                    ><i class="fas fa-arrow-left"></i> all episodes</a
+                >
+                <h1 class="mt-2 text-2xl font-extrabold text-gray-900">{{ episode.title }}</h1>
+                <p class="mt-1 text-sm text-gray-600">
+                    {{ episode.sender_name or 'unknown sender' }}
+                    <span class="text-gray-400">&lt;{{ episode.sender_email }}&gt;</span>
+                    &middot; {{ episode.published_at.strftime('%Y-%m-%d %H:%M') }} UTC
+                    {% if episode.recipient %}
+                    <span class="text-gray-400">&middot; to {{ episode.recipient }}</span>
+                    {% endif %}
+                </p>
+            </header>
+
+            <div class="bg-white rounded-lg shadow p-6 mb-6">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Status</h2>
+                <dl class="grid grid-cols-2 gap-y-2 text-sm sm:grid-cols-4">
+                    <div>
+                        <dt class="text-gray-500">Extraction</dt>
+                        <dd class="{{ 'text-red-700' if not episode.extraction_ok else 'text-green-700' }}">
+                            {{ 'failed' if not episode.extraction_ok else 'ok' }}
+                            <span class="text-gray-400">({{ episode.extractor or 'none' }})</span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Length</dt>
+                        <dd class="text-gray-900">{{ word_count }} words &middot; {{ (episode.text or '')|length }} chars</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">TTS job</dt>
+                        <dd class="text-gray-900 break-all">{{ episode.tts_job_id or 'pending' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Audio</dt>
+                        <dd class="text-gray-900">
+                            {% if episode.mp3 %}
+                            <a class="text-indigo-600 hover:underline" href="{{ tokenized('/audio/' ~ episode.mp3) }}"
+                                >{{ episode.mp3 }}</a
+                            >
+                            {% else %} none {% endif %}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Raw email</dt>
+                        <dd class="text-gray-900">{{ 'stored' if raw_exists else 'missing' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Episode id</dt>
+                        <dd class="text-gray-900 break-all">{{ episode.id[:24] }}</dd>
+                    </div>
+                </dl>
+
+                <div class="mt-5 flex flex-wrap gap-2">
+                    {% if episode.mp3 %}
+                    <button
+                        @click="new Audio('{{ tokenized('/audio/' ~ episode.mp3) }}').play()"
+                        class="rounded bg-green-600 text-white px-3 py-1 text-sm hover:bg-green-700"
+                    >
+                        <i class="fas fa-play"></i> Play
+                    </button>
+                    {% endif %}
+                    <button
+                        @click="run('/episodes/re_extract/{{ episode.id }}', 'POST', 'Re-extract this email and re-synthesize it?')"
+                        class="rounded bg-purple-600 text-white px-3 py-1 text-sm hover:bg-purple-700"
+                        title="Re-run extraction from the stored .eml and queue a new TTS run"
+                        {% if not raw_exists %}disabled{% endif %}
+                    >
+                        <i class="fas fa-filter"></i> Re-extract
+                    </button>
+                    <button
+                        @click="run('/episodes/tts/{{ episode.id }}', 'DELETE', 'Re-synthesize this episode?')"
+                        class="rounded bg-blue-600 text-white px-3 py-1 text-sm hover:bg-blue-700"
+                    >
+                        <i class="fas fa-sync"></i> Re-synthesize
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Feed description</h2>
+                <p class="text-sm text-gray-700">{{ episode.description or '(none)' }}</p>
+
+                <h2 class="mt-6 text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">
+                    Text sent to TTS
+                </h2>
+                <div class="prose max-w-none text-gray-900 whitespace-pre-wrap leading-relaxed">{{ episode.text }}</div>
+            </div>
+        </div>
+
+        <script>
+            const TOKEN = "{{ feed_token }}";
+            const withToken = (url) =>
+                TOKEN ? url + (url.includes("?") ? "&" : "?") + "token=" + TOKEN : url;
+
+            document.addEventListener("alpine:init", () => {
+                Alpine.data("episodePage", () => ({
+                    async run(url, method, confirmMessage) {
+                        if (!confirm(confirmMessage)) return;
+                        const response = await fetch(withToken(url), { method });
+                        if (!response.ok) alert("Failed: " + response.status);
+                        window.location.reload();
+                    },
+                }));
+            });
+        </script>
+    </body>
+</html>
