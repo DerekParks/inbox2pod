@@ -10,8 +10,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from inbox2pod.config import Config
 
-# Database setup. The engine is built on first use and cached per URI so that
-# changing Config.DATABASE_URI (tests, embedders) before first use takes effect.
+# Database setup
 Base = declarative_base()
 _engines = {}
 
@@ -40,11 +39,7 @@ def get_engine():
 
 
 def make_session():
-    """Get a new database session.
-
-    Sessions are short-lived and objects are handed back to callers after the
-    session closes, so commits must not expire their attributes.
-    """
+    """Get a session; returned objects stay readable after it closes."""
     return sessionmaker(bind=get_engine(), future=True, expire_on_commit=False)()
 
 

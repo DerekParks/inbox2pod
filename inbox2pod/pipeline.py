@@ -87,7 +87,6 @@ def process_incoming(email: IncomingEmail) -> Episode | None:
         os.remove(raw_path)
         return None
 
-    # re-read: adding expires the instance, and callers read fields off the result
     return episode_ops.get_episode(episode_id)
 
 

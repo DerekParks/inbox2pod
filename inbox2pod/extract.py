@@ -34,9 +34,7 @@ MIN_IMAGE_ALT_LENGTH = 80
 MAX_BOILERPLATE_LINE_LENGTH = 200
 MIN_LINK_LINE_CHARS = 12
 SENTENCE_CUT_MIN_RATIO = 0.3
-# A text/plain body this much longer than the HTML extraction wins: the
-# newsletter is handing us a better version of itself (common for forwards,
-# where only the plain part carries the forwarded content).
+# A text/plain body this much longer than the HTML extraction wins
 PLAIN_TEXT_PREFERRED_RATIO = 1.5
 
 # Elements that never carry spoken content

@@ -31,9 +31,7 @@ OPEN_PATHS = {"/health", "/favicon.ico", "/cover.png", "/feed.svg"}
 
 episode_ops = EpisodeOps()
 
-# In Flask dev mode the auto-reloader imports this module twice (parent watcher
-# + child). Only start the workers in the child, or when not running under the
-# reloader at all (e.g. waitress in prod).
+# The dev-mode reloader imports this module twice; only the child starts workers.
 _flask_env = (Config.FLASK_ENV or "").lower()
 _in_reloader_parent = _flask_env.startswith("dev") and os.environ.get("WERKZEUG_RUN_MAIN") != "true"
 
