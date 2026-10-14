@@ -46,6 +46,7 @@ class InboxController(Controller):
     def factory(self):
         return LongLineSMTP(self.handler, **self.SMTP_kwargs)
 
+
 _RCPT_LOCAL_PART = re.compile(r"^[^@\s]+")
 
 
@@ -167,11 +168,11 @@ class SmtpReceiver:
         """Stop the listener, then let the worker finish what it already took."""
         if self._controller is not None:
             self._controller.stop()
-            self._controller = None
         if self._worker is not None:
             self._handoff.put(None)
             self._worker.join(timeout=timeout)
-            self._worker = None
+        self._controller = None
+        self._worker = None
 
     def _drain(self) -> None:
         while True:
@@ -181,10 +182,9 @@ class SmtpReceiver:
                 return
             self._run_one(email)
 
-    def _run_one(self, email: IncomingEmail | None) -> None:
+    def _run_one(self, email: IncomingEmail) -> None:
         try:
-            if email is not None:
-                self._process(email)
+            self._process(email)
         except Exception as e:
             print(f"SMTP pipeline failed: {e}")
         finally:
