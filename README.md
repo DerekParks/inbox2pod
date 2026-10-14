@@ -265,7 +265,7 @@ anything private from them first.
 
 ```bash
 uv sync --all-extras
-uv run pytest              # 354 tests, all offline
+uv run pytest              # the whole suite is offline
 uv run ruff check .
 FLASK_ENV=dev uv run python run.py
 ```

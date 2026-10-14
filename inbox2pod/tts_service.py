@@ -28,8 +28,6 @@ class TTSService:
         if self.root_url.endswith("/"):
             self.root_url = self.root_url[:-1]
 
-        os.makedirs(Config.MP3_STORAGE_PATH, exist_ok=True)
-
         self.synthesize_path = f"{self.root_url}/{PATHS.SYNTHESIZE}"
         self.jobs_path = f"{self.root_url}/{PATHS.JOBS}"
         self.download_path = f"{self.root_url}/{PATHS.DOWNLOAD}"
@@ -97,6 +95,7 @@ class TTSService:
         """
         response = requests.get(self.download_path.format(job_id=job_id))
         response.raise_for_status()
+        os.makedirs(self.mp3_storage_path, exist_ok=True)
         saved_path = os.path.join(self.mp3_storage_path, f"{job_id}.mp3")
         with open(saved_path, "wb") as f:
             f.write(response.content)

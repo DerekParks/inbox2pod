@@ -1,6 +1,6 @@
 """Tests for the FlaskTtS client, including the wake-on-LAN path."""
 
-import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -26,7 +26,6 @@ def test_init_builds_the_endpoint_urls(tts, tmp_path):
     assert tts.download_path == "http://test-tts-service.com/tts/jobs/{job_id}/download"
     assert tts.health_path == "http://test-tts-service.com/health/check"
     assert tts.mp3_storage_path == str(tmp_path)
-    assert os.path.isdir(tts.mp3_storage_path)
 
 
 def test_root_url_trailing_slash_is_stripped(monkeypatch):
@@ -34,13 +33,16 @@ def test_root_url_trailing_slash_is_stripped(monkeypatch):
     assert TTSService().root_url == "http://test-tts-service.com"
 
 
-def test_audio_directory_is_created_on_construction(monkeypatch, tmp_path):
+def test_audio_directory_is_created_when_the_first_mp3_lands(monkeypatch, tmp_path, requests_mock):
     target = tmp_path / "audio" / "nested"
     monkeypatch.setattr(Config, "MP3_STORAGE_PATH", str(target))
-
     service = TTSService()
 
-    assert os.path.isdir(service.mp3_storage_path)
+    requests_mock.get(service.download_path.format(job_id="job-1"), content=b"audio bytes")
+    saved = service.download_mp3("job-1")
+
+    assert saved == str(target / "job-1.mp3")
+    assert Path(saved).read_bytes() == b"audio bytes"
 
 
 def test_submit_returns_the_job_id(requests_mock, tts):
