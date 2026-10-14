@@ -222,6 +222,58 @@ def test_end_to_end_over_a_real_socket(allowlist, monkeypatch):
     assert received[0].recipient == "x7kq2m@pod.example.com"
 
 
+def test_end_to_end_accepts_lines_longer_than_rfc_5321_allows():
+    """Minified newsletter HTML puts thousands of characters on a single line."""
+    received = []
+    receiver = SmtpReceiver(
+        process=received.append,
+        host="127.0.0.1",
+        port=2537,
+        allowed_recipients=["x7kq2m@pod.example.com"],
+    )
+    receiver.start()
+    try:
+        raw = (
+            b"From: daily@newsletter.example\r\n"
+            b"To: x7kq2m@pod.example.com\r\n"
+            b"Subject: Long lines\r\n"
+            b"Content-Type: text/html; charset=utf-8\r\n\r\n"
+            b"<div>" + b"x" * 50_000 + b"</div>"
+        )
+        with smtplib.SMTP("127.0.0.1", 2537, timeout=10) as client:
+            client.sendmail("daily@newsletter.example", ["x7kq2m@pod.example.com"], raw)
+    finally:
+        receiver.stop()
+
+    assert [email.subject for email in received] == ["Long lines"]
+
+
+def test_end_to_end_a_tight_line_limit_is_enforced():
+    received = []
+    receiver = SmtpReceiver(
+        process=received.append,
+        host="127.0.0.1",
+        port=2538,
+        allowed_recipients=["x7kq2m@pod.example.com"],
+        line_length_limit=1001,
+    )
+    receiver.start()
+    try:
+        raw = (
+            b"From: daily@newsletter.example\r\n"
+            b"To: x7kq2m@pod.example.com\r\n"
+            b"Subject: Too long for this listener\r\n\r\n" + b"x" * 5000
+        )
+        with smtplib.SMTP("127.0.0.1", 2538, timeout=10) as client:
+            with pytest.raises(smtplib.SMTPDataError) as refused:
+                client.sendmail("daily@newsletter.example", ["x7kq2m@pod.example.com"], raw)
+    finally:
+        receiver.stop()
+
+    assert refused.value.smtp_code == 500
+    assert received == []
+
+
 def test_end_to_end_rejects_the_wrong_address():
     received = []
     receiver = SmtpReceiver(

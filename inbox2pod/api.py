@@ -353,13 +353,3 @@ class Feed(Resource):
     def get(self):
         """Get the feed"""
         return render_feed()
-
-
-if __name__ == "__main__":
-    port = Config.PORT
-    if _flask_env.startswith("dev"):
-        app.run(debug=True, host="0.0.0.0", port=port)
-    else:
-        import waitress
-
-        waitress.serve(app, host="0.0.0.0", port=port)

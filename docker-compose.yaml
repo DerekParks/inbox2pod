@@ -1,0 +1,41 @@
+services:
+  inbox2pod:
+    image: ghcr.io/derekparks/inbox2pod:latest
+    container_name: inbox2pod
+    restart: unless-stopped
+    ports:
+      - "5003:5003"
+
+      # SMTP receiver mode (SMTP_ENABLED=true). The container listens on 2525 so
+      # it does not need root; map whatever host port you actually want to feed.
+      # - "25:2525"
+
+    env_file:
+      - .env
+
+    volumes:
+      # database, stored .eml files and synthesized audio
+      - ./data:/app/data
+
+      # uncomment to use your own cover art (must be at least 1400x1400)
+      # - ./cover.png:/app/inbox2pod/cover.png:ro
+
+  # TTS backend on the same host. See https://github.com/DerekParks/FlaskTtS
+  # flasktts:
+  #   image: ghcr.io/derekparks/flasktts:latest
+  #   container_name: flasktts
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5001:5001"
+  #   volumes:
+  #     - ./flasktts/db:/FlaskTtS/db/
+  #     - ./flasktts/style2tts_workdir:/FlaskTtS/style2tts_workdir
+  #   environment:
+  #     - HUEY_DB_PATH=/FlaskTtS/db/huey.db
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]

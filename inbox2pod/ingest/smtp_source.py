@@ -15,12 +15,36 @@ from queue import Queue
 from threading import Thread
 
 from aiosmtpd.controller import Controller
+from aiosmtpd.smtp import SMTP
 
 from inbox2pod.config import Config
 from inbox2pod.ingest.base import IncomingEmail, parse_email
 from inbox2pod.pipeline import process_incoming
 
 MAX_RCPT_LOG_PREVIEW = 200
+
+# RFC 5321 caps a line at 1000 octets; minified newsletter HTML and unwrapped
+# inline base64 blow straight past that
+MAX_LINE_LENGTH = 65536
+
+
+class LongLineSMTP(SMTP):
+    """The aiosmtpd protocol with a 64 KiB line limit instead of 1 KiB."""
+
+    line_length_limit = MAX_LINE_LENGTH
+
+    def __init__(self, handler, *args, line_length_limit: int | None = None, **kwargs):
+        if line_length_limit is not None:
+            # SMTP.__init__ reads this to size its StreamReader, so set it first
+            self.line_length_limit = line_length_limit
+        super().__init__(handler, *args, **kwargs)
+
+
+class InboxController(Controller):
+    """Controller wired to LongLineSMTP."""
+
+    def factory(self):
+        return LongLineSMTP(self.handler, **self.SMTP_kwargs)
 
 _RCPT_LOCAL_PART = re.compile(r"^[^@\s]+")
 
@@ -102,17 +126,19 @@ class SmtpReceiver:
         port: int | None = None,
         allowed_recipients: list[str] | None = None,
         max_message_size: int | None = None,
+        line_length_limit: int | None = None,
     ):
         self.host = host or Config.SMTP_LISTEN_HOST
         self.port = port if port is not None else Config.SMTP_LISTEN_PORT
         self.max_message_size = max_message_size if max_message_size is not None else Config.SMTP_MAX_SIZE
+        self.line_length_limit = line_length_limit if line_length_limit is not None else MAX_LINE_LENGTH
         self.allowed_recipients = (
             allowed_recipients if allowed_recipients is not None else Config.SMTP_ALLOWED_RCPT
         )
         self._process = process or process_incoming
         self._handoff: Queue = Queue()
         self._worker: Thread | None = None
-        self._controller: Controller | None = None
+        self._controller: InboxController | None = None
         self.handler = InboxHandler(
             on_message=self._handoff.put,
             allowed_recipients=self.allowed_recipients,
@@ -127,11 +153,12 @@ class SmtpReceiver:
         """Start the worker and the SMTP listener."""
         self._worker = Thread(target=self._drain, name="inbox2pod-smtp-pipeline", daemon=True)
         self._worker.start()
-        self._controller = Controller(
+        self._controller = InboxController(
             self.handler,
             hostname=self.host,
             port=self.port,
             data_size_limit=self.max_message_size,
+            line_length_limit=self.line_length_limit,
         )
         self._controller.start()
         print(f"SMTP receiver listening on {self.host}:{self.port}")
