@@ -64,8 +64,36 @@ class TestRecipientMatching:
     def test_other_domain_with_the_same_local_part_is_rejected(self):
         assert not recipient_matches("x7kq2m@evil.example", ["x7kq2m@pod.example.com"])
 
-    def test_plus_address_is_a_different_local_part(self):
-        assert not recipient_matches("x7kq2m+spam@pod.example.com", ["x7kq2m@pod.example.com"])
+    def test_tagged_address_matches_the_full_address(self):
+        assert recipient_matches("x7kq2m+moneystuff@pod.example.com", ["x7kq2m@pod.example.com"])
+
+    def test_tagged_address_matches_the_local_part(self):
+        assert recipient_matches("x7kq2m+moneystuff@pod.example.com", ["x7kq2m"])
+
+    def test_empty_tag_matches(self):
+        assert recipient_matches("x7kq2m+@pod.example.com", ["x7kq2m"])
+
+    def test_tag_splits_on_the_first_delimiter(self):
+        assert recipient_matches("x7kq2m+money+stuff@pod.example.com", ["x7kq2m"])
+
+    def test_tag_does_not_bypass_the_domain(self):
+        assert not recipient_matches("x7kq2m+moneystuff@evil.example", ["x7kq2m@pod.example.com"])
+
+    def test_secret_as_the_tag_is_rejected(self):
+        assert not recipient_matches("someone+x7kq2m@pod.example.com", ["x7kq2m"])
+
+    def test_bare_tag_is_rejected(self):
+        assert not recipient_matches("+x7kq2m@pod.example.com", ["x7kq2m"])
+
+    def test_custom_delimiter(self):
+        assert recipient_matches("x7kq2m-moneystuff@pod.example.com", ["x7kq2m"], delimiter="-")
+        assert not recipient_matches("x7kq2m+moneystuff@pod.example.com", ["x7kq2m"], delimiter="-")
+
+    def test_multi_character_delimiter(self):
+        assert recipient_matches("x7kq2m--moneystuff@pod.example.com", ["x7kq2m"], delimiter="--")
+
+    def test_empty_delimiter_disables_tags(self):
+        assert not recipient_matches("x7kq2m+moneystuff@pod.example.com", ["x7kq2m"], delimiter="")
 
 
 class TestHandlerRcpt:
@@ -73,6 +101,17 @@ class TestHandlerRcpt:
         envelope = FakeEnvelope()
         assert handler_rcpt(handler, envelope) == "250 OK"
         assert envelope.rcpt_tos == ["x7kq2m@pod.example.com"]
+
+    def test_keeps_the_tag_on_the_accepted_recipient(self, handler):
+        envelope = FakeEnvelope()
+        assert handler_rcpt(handler, envelope, "x7kq2m+moneystuff@pod.example.com") == "250 OK"
+        assert envelope.rcpt_tos == ["x7kq2m+moneystuff@pod.example.com"]
+
+    def test_uses_the_configured_delimiter(self, monkeypatch):
+        monkeypatch.setattr(Config, "SMTP_RCPT_DELIMITER", "-")
+        handler = InboxHandler(on_message=lambda email: None, allowed_recipients=["x7kq2m"])
+        assert handler_rcpt(handler, FakeEnvelope(), "x7kq2m-moneystuff@pod.example.com") == "250 OK"
+        assert handler_rcpt(handler, FakeEnvelope(), "x7kq2m+moneystuff@pod.example.com").startswith("550")
 
     def test_rejects_an_unknown_recipient(self, handler):
         assert handler_rcpt(handler, FakeEnvelope(), "random@example.com").startswith("550")

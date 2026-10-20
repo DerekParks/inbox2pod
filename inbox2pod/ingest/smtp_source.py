@@ -57,17 +57,25 @@ class InboxController(Controller):
 _RCPT_LOCAL_PART = re.compile(r"^[^@\s]+")
 
 
-def recipient_matches(address: str, allowed: list[str]) -> bool:
-    """Match an RCPT address against SMTP_ALLOWED_RCPT (full addresses or local parts)."""
+def recipient_matches(address: str, allowed: list[str], delimiter: str = "+") -> bool:
+    """Match an RCPT address against SMTP_ALLOWED_RCPT (full addresses or local parts).
+
+    With a delimiter, ``secret<delimiter>tag@domain`` matches as ``secret@domain``.
+    """
     if not allowed:
         return True
 
     address = address.strip().lower()
     match = _RCPT_LOCAL_PART.match(address)
     local_part = match.group(0) if match else address
+    candidates = {address, local_part}
+    if delimiter and delimiter in local_part:
+        base = local_part.split(delimiter, 1)[0]
+        if base:
+            candidates |= {base, base + address[len(local_part) :]}
     for entry in allowed:
         entry = entry.strip().lower()
-        if entry == address or entry == local_part or entry == f"@{local_part}":
+        if entry in candidates or entry == f"@{local_part}":
             return True
     return False
 
@@ -81,15 +89,19 @@ class InboxHandler:
         allowed_recipients: list[str] | None = None,
         max_message_size: int | None = None,
         sender_allowed: Callable[[str], bool] | None = None,
+        recipient_delimiter: str | None = None,
     ):
         self.on_message = on_message
         self.allowed_recipients = allowed_recipients if allowed_recipients is not None else Config.SMTP_ALLOWED_RCPT
         self.max_message_size = max_message_size if max_message_size is not None else Config.SMTP_MAX_SIZE
         self.sender_allowed = sender_allowed or Config.sender_allowed
+        self.recipient_delimiter = (
+            recipient_delimiter if recipient_delimiter is not None else Config.SMTP_RCPT_DELIMITER
+        )
 
     async def handle_RCPT(self, server, session, envelope, address, rcpt_options):
         """Accept only the secret address(es), and only from allowlisted senders."""
-        if not recipient_matches(address, self.allowed_recipients):
+        if not recipient_matches(address, self.allowed_recipients, self.recipient_delimiter):
             print(f"SMTP rejected recipient {address}")
             return "550 Not accepting mail for this recipient"
 

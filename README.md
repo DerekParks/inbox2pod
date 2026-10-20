@@ -147,9 +147,15 @@ the container itself listens on 2525 so it does not need root).
 3. `SMTP_ALLOWED_RCPT=x7kq2m@pod.example.com`, then give that address to the
    newsletters you want. Mail to any other recipient is refused with `550`
    during the SMTP conversation, so it never touches disk.
-4. `SENDER_ALLOWLIST` is an optional second gate for both modes; with a secret
+4. Tag each subscription: `x7kq2m+moneystuff@pod.example.com` is accepted as
+   `x7kq2m@pod.example.com`, with no config change per newsletter. The tag is
+   kept on the episode's recipient, so a leaked address points at its sender.
+   Some signup forms reject `+`; set `SMTP_RCPT_DELIMITER=-` (any string
+   without `@` or spaces) to use `x7kq2m-moneystuff@` instead, or leave it
+   empty to accept only the exact address.
+5. `SENDER_ALLOWLIST` is an optional second gate for both modes; with a secret
    address you usually do not need it.
-5. STARTTLS is not implemented. Newsletter senders deliver fine without it, and
+6. STARTTLS is not implemented. Newsletter senders deliver fine without it, and
    the payload is public prose anyway — but the transport is not encrypted, so
    do not put anything private in this mailbox.
 
@@ -216,6 +222,7 @@ version).
 | `SMTP_ENABLED` | `false` | Run the SMTP receiver |
 | `SMTP_LISTEN_HOST` / `SMTP_LISTEN_PORT` | `0.0.0.0` / `2525` | Where the receiver listens |
 | `SMTP_ALLOWED_RCPT` | *(empty = accept all)* | Accepted recipient addresses/local parts |
+| `SMTP_RCPT_DELIMITER` | `+` | Separates a per-subscription tag from the secret; empty disables tags |
 | `SMTP_SPOOL_PATH` | `data/smtp-spool` | Durable accepted SMTP mail awaiting processing |
 | `SMTP_MAX_SIZE` | `10485760` | Rejected-over size, in bytes |
 | `SENDER_ALLOWLIST` | *(empty = accept all)* | Addresses or domains, both ingest modes |

@@ -67,7 +67,14 @@ class TestReloadedConfig:
         return importlib.reload(config_module)
 
     def test_defaults(self, monkeypatch):
-        for name in ("IMAP_PORT", "TTS_MODEL", "FEED_TOKEN", "EPISODE_RETENTION_DAYS", "IMAP_AFTER_ACTION"):
+        for name in (
+            "IMAP_PORT",
+            "TTS_MODEL",
+            "FEED_TOKEN",
+            "EPISODE_RETENTION_DAYS",
+            "IMAP_AFTER_ACTION",
+            "SMTP_RCPT_DELIMITER",
+        ):
             monkeypatch.delenv(name, raising=False)
         module = importlib.reload(config_module)
 
@@ -76,6 +83,7 @@ class TestReloadedConfig:
         assert module.Config.FEED_TOKEN == ""
         assert module.Config.EPISODE_RETENTION_DAYS is None
         assert module.Config.IMAP_AFTER_ACTION == "mark_seen"
+        assert module.Config.SMTP_RCPT_DELIMITER == "+"
 
     def test_overrides(self, monkeypatch):
         module = self.reload(
@@ -87,6 +95,7 @@ class TestReloadedConfig:
             EPISODE_RETENTION_DAYS="30",
             IMAP_AFTER_ACTION="Move:Processed",
             FEED_TOKEN="  secret-token  ",
+            SMTP_RCPT_DELIMITER="-",
         )
 
         assert module.Config.IMAP_PORT == 1143
@@ -94,6 +103,7 @@ class TestReloadedConfig:
         assert module.Config.EPISODE_RETENTION_DAYS == 30
         assert module.Config.IMAP_AFTER_ACTION == "move:Processed"
         assert module.Config.FEED_TOKEN == "secret-token"
+        assert module.Config.SMTP_RCPT_DELIMITER == "-"
 
     def test_relative_storage_paths_are_made_absolute(self, monkeypatch):
         module = self.reload(monkeypatch, RAW_STORAGE_PATH="data/raw", MP3_STORAGE_PATH="/srv/pod/audio")
@@ -112,6 +122,7 @@ def pristine(monkeypatch):
         ("SMTP_ENABLED", False),
         ("IMAP_AFTER_ACTION", "mark_seen"),
         ("TTS_WOL_ENABLED", False),
+        ("SMTP_RCPT_DELIMITER", "+"),
         ("TTS_WOL_MAC", ""),
     ):
         monkeypatch.setattr(Config, name, value)
@@ -145,6 +156,17 @@ class TestValidate:
     @pytest.mark.parametrize("action", ["mark_seen", "none", "delete", "move:Processed"])
     def test_accepted_after_actions(self, pristine, monkeypatch, action):
         monkeypatch.setattr(Config, "IMAP_AFTER_ACTION", action)
+        pristine.validate()
+
+    @pytest.mark.parametrize("delimiter", ["@", "x@", " ", "+ "])
+    def test_a_delimiter_with_an_at_sign_or_space_fails(self, pristine, monkeypatch, delimiter):
+        monkeypatch.setattr(Config, "SMTP_RCPT_DELIMITER", delimiter)
+        with pytest.raises(AssertionError, match="SMTP_RCPT_DELIMITER"):
+            pristine.validate()
+
+    @pytest.mark.parametrize("delimiter", ["+", "-", "--", ""])
+    def test_accepted_delimiters(self, pristine, monkeypatch, delimiter):
+        monkeypatch.setattr(Config, "SMTP_RCPT_DELIMITER", delimiter)
         pristine.validate()
 
     def test_wake_on_lan_needs_a_mac(self, pristine, monkeypatch):

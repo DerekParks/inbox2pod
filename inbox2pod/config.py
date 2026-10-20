@@ -54,6 +54,7 @@ class Config:
     SMTP_LISTEN_HOST = os.getenv("SMTP_LISTEN_HOST", "0.0.0.0")
     SMTP_LISTEN_PORT = _int("SMTP_LISTEN_PORT", "2525")
     SMTP_ALLOWED_RCPT = _lower_csv("SMTP_ALLOWED_RCPT")
+    SMTP_RCPT_DELIMITER = os.getenv("SMTP_RCPT_DELIMITER", "+")
     SMTP_MAX_SIZE = _int("SMTP_MAX_SIZE", "10485760")
 
     # Applies to both sources. Empty accepts everything.
@@ -113,6 +114,10 @@ class Config:
 
         assert cls.IMAP_AFTER_ACTION in ("mark_seen", "none", "delete") or cls.IMAP_AFTER_ACTION.startswith("move:"), (
             f"IMAP_AFTER_ACTION must be mark_seen, none, delete or move:<folder>, got {cls.IMAP_AFTER_ACTION!r}"
+        )
+
+        assert not any(c == "@" or c.isspace() for c in cls.SMTP_RCPT_DELIMITER), (
+            f"SMTP_RCPT_DELIMITER must not contain '@' or whitespace, got {cls.SMTP_RCPT_DELIMITER!r}"
         )
 
         assert cls.IMAP_HOST or cls.SMTP_ENABLED, (
