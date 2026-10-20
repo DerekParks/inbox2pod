@@ -181,17 +181,9 @@ def download_completed_tts_jobs(completed_jobs: list[str]) -> None:
 
 
 def filter_job_ids_to_ones_we_know_about(job_ids: list[str]) -> list[str]:
-    """Drop (and delete upstream) any TTS job we have no episode for."""
-    known_job_ids = episode_ops.get_job_ids()
-    result = []
-
-    for job_id in job_ids:
-        if job_id in known_job_ids:
-            result.append(job_id)
-        else:
-            print("Removing unknown tts job with id", job_id)
-            tts_service.delete_job(job_id)
-    return result
+    """Keep only TTS jobs we have an episode for; other clients share the service."""
+    known_job_ids = set(episode_ops.get_job_ids())
+    return [job_id for job_id in job_ids if job_id in known_job_ids]
 
 
 @serialized

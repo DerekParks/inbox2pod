@@ -388,14 +388,13 @@ def test_ingest_new_emails_survives_an_imap_outage(monkeypatch, capsys):
     assert "IMAP poll failed" in capsys.readouterr().out
 
 
-def test_rejected_tts_job_ids_are_deleted_upstream(tmp_storage, ops, episode, tts):
+def test_other_clients_tts_jobs_are_left_alone(tmp_storage, ops, episode, tts):
     from inbox2pod.pipeline import filter_job_ids_to_ones_we_know_about
 
     ops.mark_tts_submitted("ep-1", "job-known")
-    tts.delete(f"{TTS_ROOT}/tts/jobs/job-stranger")
 
     assert filter_job_ids_to_ones_we_know_about(["job-known", "job-stranger"]) == ["job-known"]
-    assert tts.request_history[0].path == "/tts/jobs/job-stranger"
+    assert tts.request_history == []
 
 
 def test_a_broken_episode_does_not_stop_the_batch(tmp_storage, ops, episode, tts, monkeypatch):
