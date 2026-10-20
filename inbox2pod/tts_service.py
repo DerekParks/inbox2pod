@@ -38,6 +38,10 @@ class TTSService:
         """Where audio is kept. Read live so a changed Config takes effect."""
         return Config.MP3_STORAGE_PATH
 
+    @property
+    def request_timeout(self) -> tuple[int, int]:
+        return (Config.TTS_CONNECT_TIMEOUT, Config.TTS_READ_TIMEOUT)
+
     def submit_tts(self, text: str) -> str:
         """Submit a TTS request and return the job id.
 
@@ -55,6 +59,7 @@ class TTSService:
         response = requests.post(
             self.synthesize_path,
             json=opts,
+            timeout=self.request_timeout,
         )
         response.raise_for_status()
         return response.json()["job_id"]
@@ -68,7 +73,7 @@ class TTSService:
         Returns:
             tuple[list[str], list[str]]: The list of completed and ongoing TTS jobs
         """
-        response = requests.get(self.jobs_path)
+        response = requests.get(self.jobs_path, timeout=self.request_timeout)
         response.raise_for_status()
         res_json = response.json()["jobs"]
         completed_jobs = []
@@ -93,7 +98,7 @@ class TTSService:
         Returns:
             str: The path where the mp3 was saved
         """
-        response = requests.get(self.download_path.format(job_id=job_id))
+        response = requests.get(self.download_path.format(job_id=job_id), timeout=self.request_timeout)
         response.raise_for_status()
         os.makedirs(self.mp3_storage_path, exist_ok=True)
         saved_path = os.path.join(self.mp3_storage_path, f"{job_id}.mp3")
@@ -107,7 +112,7 @@ class TTSService:
         Args:
             job_id: The job id to delete
         """
-        response = requests.delete(f"{self.jobs_path}/{job_id}")
+        response = requests.delete(f"{self.jobs_path}/{job_id}", timeout=self.request_timeout)
         response.raise_for_status()
 
     def check_health(self) -> bool:

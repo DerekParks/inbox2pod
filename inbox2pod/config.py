@@ -3,6 +3,7 @@ Configuration for the application
 """
 
 import os
+from urllib.parse import urlsplit
 
 from inbox2pod.utils import resolve_path
 
@@ -27,6 +28,11 @@ def _lower_csv(name: str, default: str = "") -> list[str]:
     return [item.lower() for item in _csv(name, default)]
 
 
+def imap_action(value: str) -> str:
+    action, separator, folder = value.strip().partition(":")
+    return action.lower() + (separator + folder.strip() if separator else "")
+
+
 class Config:
     """Configuration for the application."""
 
@@ -41,7 +47,7 @@ class Config:
     IMAP_FOLDER = os.getenv("IMAP_FOLDER", "INBOX")
     IMAP_POLL_MINUTES = _int("IMAP_POLL_MINUTES", "5")
     IMAP_MAX_EMAILS_PER_POLL = _int("IMAP_MAX_EMAILS_PER_POLL", "25")
-    IMAP_AFTER_ACTION = os.getenv("IMAP_AFTER_ACTION", "mark_seen").strip().lower()
+    IMAP_AFTER_ACTION = imap_action(os.getenv("IMAP_AFTER_ACTION", "mark_seen"))
 
     # Ingest - SMTP receiver (the power path)
     SMTP_ENABLED = _bool("SMTP_ENABLED")
@@ -53,10 +59,14 @@ class Config:
     # Applies to both sources. Empty accepts everything.
     SENDER_ALLOWLIST = _lower_csv("SENDER_ALLOWLIST")
 
+    SMTP_SPOOL_PATH = resolve_path(os.getenv("SMTP_SPOOL_PATH", "data/smtp-spool"))
+
     # TTS
     TTS_ROOT_URL = os.getenv("TTS_ROOT_URL", "http://localhost:5001")
     TTS_MODEL = os.getenv("TTS_MODEL", "kokoro")
     TTS_VOICE = os.getenv("TTS_VOICE", "af_heart")
+    TTS_CONNECT_TIMEOUT = _int("TTS_CONNECT_TIMEOUT", "5")
+    TTS_READ_TIMEOUT = _int("TTS_READ_TIMEOUT", "120")
     TTS_BATCH_SIZE = _int("TTS_BATCH_SIZE", "10")
 
     TTS_WOL_ENABLED = _bool("TTS_WOL_ENABLED")
@@ -77,6 +87,7 @@ class Config:
     FEED_AUTHOR = os.getenv("FEED_AUTHOR", "Inbox2Pod")
     FEED_OWNER_EMAIL = os.getenv("FEED_OWNER_EMAIL", "")
     FEED_LANGUAGE = os.getenv("FEED_LANGUAGE", "en-us")
+    FEED_BASE_URL = os.getenv("FEED_BASE_URL", "").strip().rstrip("/")
     FEED_SITE_URL = os.getenv("FEED_SITE_URL", "")
     FEED_TOKEN = os.getenv("FEED_TOKEN", "").strip()
     FEED_MAX_EPISODES = _int("FEED_MAX_EPISODES", "1000")
@@ -91,6 +102,12 @@ class Config:
     @classmethod
     def validate(cls) -> None:
         """Fail fast on unusable configuration."""
+        if cls.FEED_BASE_URL:
+            url = urlsplit(cls.FEED_BASE_URL)
+            assert url.scheme in ("http", "https") and url.netloc and not url.path and not url.query and not url.fragment, (
+                "FEED_BASE_URL must be an http(s) origin without a path, query, or fragment"
+            )
+        assert cls.TTS_CONNECT_TIMEOUT > 0 and cls.TTS_READ_TIMEOUT > 0, "TTS timeouts must be positive"
         if cls.TTS_WOL_ENABLED:
             assert cls.TTS_WOL_MAC, "TTS_WOL_MAC must be set when TTS_WOL_ENABLED is true"
 

@@ -138,7 +138,7 @@ class TestHandlerData:
 class TestSmtpReceiver:
     def test_worker_processes_the_queue(self, monkeypatch):
         processed = []
-        monkeypatch.setattr(smtp_source, "Controller", lambda *args, **kwargs: FakeController())
+        monkeypatch.setattr(smtp_source, "InboxController", FakeController)
         receiver = SmtpReceiver(process=processed.append, port=2599)
         receiver.start()
         try:
@@ -156,7 +156,7 @@ class TestSmtpReceiver:
             calls.append(email)
             raise RuntimeError("nope")
 
-        monkeypatch.setattr(smtp_source, "Controller", lambda *args, **kwargs: FakeController())
+        monkeypatch.setattr(smtp_source, "InboxController", FakeController)
         receiver = SmtpReceiver(process=explode, port=2598)
         receiver.start()
         try:
@@ -172,7 +172,7 @@ class TestSmtpReceiver:
         SmtpReceiver(port=2597).stop()
 
     def test_running_flag(self, monkeypatch):
-        monkeypatch.setattr(smtp_source, "Controller", lambda *args, **kwargs: FakeController())
+        monkeypatch.setattr(smtp_source, "InboxController", FakeController)
         receiver = SmtpReceiver(process=lambda email: None, port=2596)
         assert receiver.running is False
         receiver.start()
@@ -291,3 +291,84 @@ def test_end_to_end_rejects_the_wrong_address():
         receiver.stop()
 
     assert received == []
+
+
+def test_spool_survives_worker_failure_and_restart(monkeypatch, tmp_path):
+    monkeypatch.setattr(smtp_source, "InboxController", FakeController)
+
+    def fail(email):
+        raise OSError("database unavailable")
+
+    receiver = SmtpReceiver(process=fail, spool_path=str(tmp_path))
+    receiver.start()
+    response = asyncio.run(receiver.handler.handle_DATA(None, None, FakeEnvelope(rcpt_tos=["secret@pod.example.com"])))
+    receiver.stop()
+    assert response.startswith("250")
+    assert len(list(tmp_path.glob("*.json"))) == 1
+
+    received = []
+    recovered = SmtpReceiver(process=received.append, spool_path=str(tmp_path))
+    recovered.start()
+    recovered.stop()
+    assert [email.raw_bytes for email in received] == [RAW]
+    assert received[0].recipient == "secret@pod.example.com"
+    assert list(tmp_path.glob("*.json")) == []
+
+
+def test_spool_failure_tempfails_before_acknowledgement(monkeypatch, tmp_path):
+    def fail(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(smtp_source, "durable_write", fail)
+    receiver = SmtpReceiver(spool_path=str(tmp_path))
+    response = asyncio.run(receiver.handler.handle_DATA(None, None, FakeEnvelope()))
+    assert response.startswith("451")
+    assert receiver._handoff.empty()
+
+
+def test_stop_keeps_running_true_until_worker_drains(monkeypatch, tmp_path):
+    from threading import Event
+
+    monkeypatch.setattr(smtp_source, "InboxController", FakeController)
+    started, release = Event(), Event()
+
+    def wait(email):
+        started.set()
+        assert release.wait(5)
+
+    receiver = SmtpReceiver(process=wait, spool_path=str(tmp_path))
+    receiver.start()
+    try:
+        receiver._enqueue(smtp_source.parse_email(RAW))
+        assert started.wait(5)
+        receiver.stop(timeout=0)
+        assert receiver.running
+    finally:
+        release.set()
+        receiver.stop()
+    assert not receiver.running
+
+
+def test_failed_spool_entry_is_retried_without_restart(monkeypatch, tmp_path):
+    from threading import Event
+
+    monkeypatch.setattr(smtp_source, "InboxController", FakeController)
+    monkeypatch.setattr(smtp_source, "SPOOL_RETRY_SECONDS", 0.01)
+    delivered = Event()
+    calls = []
+
+    def flaky(email):
+        calls.append(email)
+        if len(calls) == 1:
+            raise OSError("temporarily unavailable")
+        delivered.set()
+
+    receiver = SmtpReceiver(process=flaky, spool_path=str(tmp_path))
+    receiver.start()
+    try:
+        receiver._enqueue(smtp_source.parse_email(RAW))
+        assert delivered.wait(5)
+    finally:
+        receiver.stop()
+    assert len(calls) == 2
+    assert list(tmp_path.glob("*.json")) == []

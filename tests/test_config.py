@@ -92,7 +92,7 @@ class TestReloadedConfig:
         assert module.Config.IMAP_PORT == 1143
         assert module.Config.SMTP_ALLOWED_RCPT == ["x7kq2m@pod.example", "secret"]
         assert module.Config.EPISODE_RETENTION_DAYS == 30
-        assert module.Config.IMAP_AFTER_ACTION == "move:processed"
+        assert module.Config.IMAP_AFTER_ACTION == "move:Processed"
         assert module.Config.FEED_TOKEN == "secret-token"
 
     def test_relative_storage_paths_are_made_absolute(self, monkeypatch):
@@ -204,3 +204,17 @@ class TestSenderAllowed:
         monkeypatch.setattr(Config, "SENDER_ALLOWLIST", ["dailyledger.example"])
         assert Config.sender_allowed(None) is False
         assert Config.sender_allowed("") is False
+
+
+@pytest.mark.parametrize("origin", ["ftp://pod.example", "https://pod.example/path", "https://pod.example?token=x"])
+def test_invalid_feed_origin_is_rejected(pristine, monkeypatch, origin):
+    monkeypatch.setattr(Config, "FEED_BASE_URL", origin)
+    with pytest.raises(AssertionError, match="FEED_BASE_URL"):
+        pristine.validate()
+
+
+@pytest.mark.parametrize("name", ["TTS_CONNECT_TIMEOUT", "TTS_READ_TIMEOUT"])
+def test_tts_timeouts_must_be_positive(pristine, monkeypatch, name):
+    monkeypatch.setattr(Config, name, 0)
+    with pytest.raises(AssertionError, match="timeouts must be positive"):
+        pristine.validate()

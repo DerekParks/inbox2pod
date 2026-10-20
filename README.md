@@ -164,9 +164,20 @@ swaks --to x7kq2m@pod.example.com \
 ```
 
 The handler does no heavy lifting inside the SMTP transaction: it checks the
-envelope, writes the message to a queue, and returns `250`. Extraction and the
-database happen on a worker thread, so a slow extraction cannot stall the
-connection.
+envelope, durably writes a spool file, and returns `250`. Extraction and the
+SQLite insert happen on a worker thread. Failed entries stay on disk and retry
+every 30 seconds; restarting the container recovers pending entries. A storage
+failure returns `451` so the sender can retry. Keep `SMTP_SPOOL_PATH` on persistent
+storage alongside the database, raw mail, and audio.
+
+IMAP after-actions run only after each message is persisted (or deliberately
+rejected by the sender policy). Parse, extraction, and storage failures leave
+that message unread for retry. Move destinations preserve folder-name case.
+
+Run **one application process and one replica per database/spool**, using
+`python run.py` as shipped. A shared lock serializes SMTP ingestion, scheduled
+polls, manual updates, re-extraction, and deletion within that process. Multiple
+worker processes or replicas are not supported by this queue design.
 
 ## The feed
 
@@ -205,10 +216,12 @@ version).
 | `SMTP_ENABLED` | `false` | Run the SMTP receiver |
 | `SMTP_LISTEN_HOST` / `SMTP_LISTEN_PORT` | `0.0.0.0` / `2525` | Where the receiver listens |
 | `SMTP_ALLOWED_RCPT` | *(empty = accept all)* | Accepted recipient addresses/local parts |
+| `SMTP_SPOOL_PATH` | `data/smtp-spool` | Durable accepted SMTP mail awaiting processing |
 | `SMTP_MAX_SIZE` | `10485760` | Rejected-over size, in bytes |
 | `SENDER_ALLOWLIST` | *(empty = accept all)* | Addresses or domains, both ingest modes |
 | `TTS_ROOT_URL` | `http://localhost:5001` | FlaskTtS base URL |
 | `TTS_MODEL` / `TTS_VOICE` | `kokoro` / `af_heart` | Passed straight to FlaskTtS |
+| `TTS_CONNECT_TIMEOUT` / `TTS_READ_TIMEOUT` | `5` / `120` | HTTP connection/read inactivity limits in seconds |
 | `TTS_BATCH_SIZE` | `10` | Episodes submitted per cycle |
 | `TTS_WOL_ENABLED` / `TTS_WOL_MAC` | `false` / — | Wake the TTS box with a magic packet |
 | `DATABASE_URI` | `sqlite:///data/inbox2pod.db` | Any SQLAlchemy URI |
@@ -217,6 +230,7 @@ version).
 | `FEED_TITLE` / `FEED_DESCRIPTION` / `FEED_AUTHOR` | `Inbox2Pod` / … | Feed metadata |
 | `FEED_OWNER_EMAIL` | *(falls back to `IMAP_USER`)* | `itunes:owner`, needed to submit to directories |
 | `FEED_LANGUAGE` | `en-us` | Feed language |
+| `FEED_BASE_URL` | *(request origin)* | External HTTP(S) origin for feed, audio, and cover URLs; set behind a proxy |
 | `FEED_SITE_URL` | *(request host)* | The `<link>` the feed advertises |
 | `FEED_TOKEN` | *(empty = no auth)* | Gate for feed, UI and audio |
 | `FEED_MAX_EPISODES` | `1000` | Items in the feed |

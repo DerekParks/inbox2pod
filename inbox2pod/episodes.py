@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, String, Text, create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from inbox2pod.config import Config
@@ -189,7 +190,13 @@ class EpisodeOps:
             if session.get(Episode, episode.id) is not None:
                 return False
             session.add(episode)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                if session.get(Episode, episode.id) is None:
+                    raise
+                return False
             return True
 
     def update_extraction(

@@ -5,9 +5,11 @@ Points at any existing mailbox (Gmail, Fastmail, ...) and pulls unread mail
 from one folder. No DNS, no open ports, works behind CGNAT.
 """
 
+from collections.abc import Callable
+
 from imap_tools import AND, MailBox
 
-from inbox2pod.config import Config
+from inbox2pod.config import Config, imap_action
 from inbox2pod.ingest.base import IncomingEmail, parse_email
 
 
@@ -34,22 +36,31 @@ class ImapSource:
         self.username = username or Config.IMAP_USER
         self.password = password or Config.IMAP_PASSWORD
         self.folder = folder or Config.IMAP_FOLDER
-        self.after_action = (after_action or Config.IMAP_AFTER_ACTION).strip().lower()
+        self.after_action = imap_action(after_action or Config.IMAP_AFTER_ACTION)
         self.max_emails = max_emails if max_emails is not None else Config.IMAP_MAX_EMAILS_PER_POLL
 
-    def fetch(self) -> list[IncomingEmail]:
-        """Fetch unread mail, apply the after action, return what was read."""
+    def fetch(self, on_message: Callable[[IncomingEmail], object] | None = None) -> list[IncomingEmail]:
+        """Acknowledge only messages successfully handled by on_message.
+
+        Without a callback this is a read-only fetch. Callback exceptions leave
+        the message unread, so storage or extraction failures can be retried.
+        """
         emails: list[IncomingEmail] = []
         with MailBox(self.host, self.port).login(self.username, self.password, self.folder) as mailbox:
             messages = list(mailbox.fetch(AND(seen=False), mark_seen=False, limit=self.max_emails or None))
 
+            accepted_uids = []
             for message in messages:
                 try:
-                    emails.append(email_from_imap(message))
+                    email = email_from_imap(message)
+                    if on_message is not None:
+                        on_message(email)
+                        accepted_uids.append(message.uid)
+                    emails.append(email)
                 except Exception as e:
                     print(f"Skipping IMAP message uid={getattr(message, 'uid', '?')}: {e}")
 
-            self._apply_after_action(mailbox, [message.uid for message in messages])
+            self._apply_after_action(mailbox, accepted_uids)
 
         return emails
 

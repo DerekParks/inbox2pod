@@ -14,6 +14,7 @@ from inbox2pod.config import Config
 from inbox2pod.episodes import EpisodeOps
 from inbox2pod.feed import gen_feed
 from inbox2pod.ingest.smtp_source import SmtpReceiver
+from inbox2pod.locking import serialized
 from inbox2pod.pipeline import (
     delete_mp3,
     main_poll_loop,
@@ -182,7 +183,8 @@ def render_feed() -> Response:
     episodes = episode_ops.get_episodes_with_mp3()
     if len(episodes) > Config.FEED_MAX_EPISODES:
         episodes = episodes[-Config.FEED_MAX_EPISODES :]
-    return Response(gen_feed(episodes, request.url_root), mimetype="application/rss+xml")
+    root_url = f"{Config.FEED_BASE_URL}/" if Config.FEED_BASE_URL else request.url_root
+    return Response(gen_feed(episodes, root_url), mimetype="application/rss+xml")
 
 
 @app.route("/feed")
@@ -299,6 +301,7 @@ class ForceUpdate(Resource):
 @ns.route("/<episode_id>")
 class Episode(Resource):
     @ns.doc("delete_episode")
+    @serialized
     def delete(self, episode_id):
         """Delete an episode, its audio and its raw email"""
         episode = episode_ops.get_episode(episode_id)
@@ -314,6 +317,7 @@ class Episode(Resource):
 @ns.route("/tts/<episode_id>")
 class EpisodeTTS(Resource):
     @ns.doc("request_new_tts")
+    @serialized
     def delete(self, episode_id):
         """Re-synthesize an episode"""
         if episode_ops.get_episode(episode_id) is None:

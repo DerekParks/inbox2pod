@@ -65,3 +65,10 @@ def app_client(empty_db):
         from inbox2pod.api import app
 
         return app.test_client()
+
+
+@pytest.fixture(autouse=True)
+def tmp_smtp_spool(monkeypatch, tmp_path):
+    from inbox2pod.config import Config
+
+    monkeypatch.setattr(Config, "SMTP_SPOOL_PATH", str(tmp_path / "spool"))

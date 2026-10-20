@@ -301,3 +301,14 @@ class TestHealth:
         assert body["smtp_enabled"] is False
         assert body["smtp_running"] is False
         assert body["tts_healthy"] is False
+
+
+def test_feed_uses_configured_external_origin(app_client, monkeypatch, stored):
+    monkeypatch.setattr(Config, "FEED_BASE_URL", "https://podbox.example.ts.net")
+    monkeypatch.setattr(Config, "FEED_TOKEN", "secret")
+    response = app_client.get("/secret/feed.xml")
+    assert response.status_code == 200
+    assert b"https://podbox.example.ts.net/secret/feed.xml" in response.data
+    assert b"https://podbox.example.ts.net/cover.png" in response.data
+    assert b"https://podbox.example.ts.net/secret/audio/job-1.mp3" in response.data
+    assert b"http://localhost" not in response.data

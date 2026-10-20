@@ -129,7 +129,7 @@ def source(patch_mailbox):
 
 
 def test_login_uses_the_configured_folder(source):
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     mailbox = FakeMailBox.instances[0]
     assert mailbox.login_args == ("pod", "secret", "Newsletters")
     assert mailbox.host == "imap.test"
@@ -137,7 +137,7 @@ def test_login_uses_the_configured_folder(source):
 
 
 def test_fetch_returns_parsed_emails(source):
-    emails = source.fetch()
+    emails = source.fetch(on_message=lambda email: None)
     assert len(emails) == 2
     assert emails[0].message_id == "imap-1@example.com"
     assert emails[0].subject == "Morning wrap"
@@ -146,7 +146,7 @@ def test_fetch_returns_parsed_emails(source):
 
 
 def test_criteria_is_unseen_and_the_limit_is_passed(source):
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     kwargs = FakeMailBox.instances[0].fetch_kwargs
     assert "UNSEEN" in kwargs["criteria"].upper()
     assert kwargs["mark_seen"] is False
@@ -159,13 +159,13 @@ def test_max_emails_of_zero_means_no_limit(patch_mailbox):
 
 
 def test_mark_seen_flags_every_fetched_uid(source):
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     assert FakeMailBox.instances[0].seen == [(["1", "2"], "\\Seen", True)]
 
 
 def test_delete_action_deletes_and_expunges(source):
     source.after_action = "delete"
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     mailbox = FakeMailBox.instances[0]
     assert mailbox.deleted == [["1", "2"]]
     assert mailbox.expunge_calls == 1
@@ -174,7 +174,7 @@ def test_delete_action_deletes_and_expunges(source):
 
 def test_move_action_creates_a_missing_destination(source):
     source.after_action = "move:Processed"
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     mailbox = FakeMailBox.instances[0]
     assert mailbox.moved == [(["1", "2"], "Processed")]
     assert mailbox.created == ["Processed"]
@@ -183,7 +183,7 @@ def test_move_action_creates_a_missing_destination(source):
 def test_move_action_reuses_an_existing_destination(source):
     FakeMailBox.preset_folders = {"Processed"}
     source.after_action = "move:Processed"
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     mailbox = FakeMailBox.instances[0]
     assert mailbox.moved == [(["1", "2"], "Processed")]
     assert mailbox.created == []
@@ -191,26 +191,26 @@ def test_move_action_reuses_an_existing_destination(source):
 
 def test_none_action_leaves_the_mailbox_alone(source):
     source.after_action = "none"
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     mailbox = FakeMailBox.instances[0]
     assert (mailbox.seen, mailbox.deleted, mailbox.moved) == ([], [], [])
 
 
 def test_no_messages_means_no_after_action(source):
     FakeMailBox.preset_messages = []
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     assert FakeMailBox.instances[0].seen == []
 
 
 def test_fetch_failure_propagates_to_the_caller(source):
     FakeMailBox.fail_fetch = OSError("connection reset")
     with pytest.raises(OSError):
-        source.fetch()
+        source.fetch(on_message=lambda email: None)
 
 
 def test_after_action_failure_does_not_lose_emails(source, capsys):
     FakeMailBox.fail_action = OSError("server said no")
-    emails = source.fetch()
+    emails = source.fetch(on_message=lambda email: None)
     assert len(emails) == 2
     assert "failed" in capsys.readouterr().out
 
@@ -224,7 +224,7 @@ def test_one_broken_message_does_not_stop_the_batch(source, monkeypatch):
         return parse(message)
 
     monkeypatch.setattr(imap_source, "email_from_imap", explode)
-    assert len(source.fetch()) == 1
+    assert len(source.fetch(on_message=lambda email: None)) == 1
 
 
 def test_source_defaults_come_from_config(patch_mailbox, monkeypatch):
@@ -242,6 +242,45 @@ def test_source_defaults_come_from_config(patch_mailbox, monkeypatch):
         "config-user",
         "config-password",
     )
-    source.fetch()
+    source.fetch(on_message=lambda email: None)
     assert FakeMailBox.instances[0].login_args == ("config-user", "config-password", "Reading")
     assert FakeMailBox.instances[0].deleted == [["1", "2"]]
+
+
+def test_read_only_fetch_does_not_acknowledge(source):
+    assert len(source.fetch()) == 2
+    assert FakeMailBox.instances[0].seen == []
+
+
+def test_processing_failure_is_not_acknowledged(source):
+    FakeMailBox.preset_messages = [FakeMessage("1"), FakeMessage("2")]
+    calls = []
+
+    def persist(email):
+        calls.append(email)
+        if len(calls) == 1:
+            raise OSError("disk full")
+        assert FakeMailBox.instances[0].seen == []
+
+    assert len(source.fetch(on_message=persist)) == 1
+    assert FakeMailBox.instances[0].seen == [(["2"], "\\Seen", True)]
+
+
+def test_parse_failure_is_not_deleted(source, monkeypatch):
+    source.after_action = "delete"
+    parse = imap_source.email_from_imap
+
+    def parse_one(message):
+        if message.uid == "1":
+            raise ValueError("bad headers")
+        return parse(message)
+
+    monkeypatch.setattr(imap_source, "email_from_imap", parse_one)
+    source.fetch(on_message=lambda email: None)
+    assert FakeMailBox.instances[0].deleted == [["2"]]
+
+
+def test_constructor_preserves_move_destination_case(patch_mailbox):
+    source = ImapSource(after_action=" Move:Newsletters/Processed ")
+    source.fetch(on_message=lambda email: None)
+    assert FakeMailBox.instances[0].moved == [(["1", "2"], "Newsletters/Processed")]

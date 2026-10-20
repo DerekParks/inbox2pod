@@ -7,12 +7,15 @@ to FlaskTtS, an episode with a NULL mp3 has not been synthesized yet.
 
 import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from inbox2pod.config import Config
 from inbox2pod.episodes import Episode, EpisodeOps
 from inbox2pod.extract import ExtractionResult, extract_email
 from inbox2pod.ingest.base import IncomingEmail
 from inbox2pod.ingest.imap_source import ImapSource
+from inbox2pod.locking import serialized
+from inbox2pod.storage import durable_write
 from inbox2pod.tts_service import TTSService
 from inbox2pod.utils import sha256_hex, utcnow_naive
 
@@ -35,10 +38,8 @@ def episode_id_for(email: IncomingEmail) -> str:
 
 def store_raw(raw_bytes: bytes, episode_id: str) -> str:
     """Write the raw message to disk so it can always be re-extracted later."""
-    os.makedirs(Config.RAW_STORAGE_PATH, exist_ok=True)
     path = os.path.join(Config.RAW_STORAGE_PATH, f"{episode_id}.eml")
-    with open(path, "wb") as fh:
-        fh.write(raw_bytes)
+    durable_write(Path(path), raw_bytes)
     return path
 
 
@@ -62,6 +63,7 @@ def episode_from(email: IncomingEmail, episode_id: str, raw_path: str, extractio
     )
 
 
+@serialized
 def process_incoming(email: IncomingEmail) -> Episode | None:
     """Turn one ingested email into an episode.
 
@@ -84,7 +86,6 @@ def process_incoming(email: IncomingEmail) -> Episode | None:
         print(f"Extraction too thin for {episode_id} ({len(extraction.text)} chars): flagged for review")
 
     if not episode_ops.add_episode(episode):
-        os.remove(raw_path)
         return None
 
     return episode_ops.get_episode(episode_id)
@@ -105,6 +106,7 @@ def process_many(emails) -> list[Episode]:
     return created
 
 
+@serialized
 def re_extract(episode_id: str) -> ExtractionResult | None:
     """Re-run extraction from the stored raw email and queue a fresh TTS run.
 
@@ -154,6 +156,7 @@ def episode_to_tts_text(episode: Episode, max_length: int | None = None) -> str:
     return f"{episode.title}\n{byline}\n\n{text}"
 
 
+@serialized
 def submit_tts_request_for_episodes(episodes: list[Episode]) -> None:
     """Submit the TTS request for the episodes."""
     for episode in episodes:
@@ -191,6 +194,7 @@ def filter_job_ids_to_ones_we_know_about(job_ids: list[str]) -> list[str]:
     return result
 
 
+@serialized
 def tts_pending_and_completed_update() -> None:
     """Reconcile the TTS service and the database."""
     completed_jobs, ongoing_jobs = tts_service.get_jobs()
@@ -204,6 +208,7 @@ def tts_pending_and_completed_update() -> None:
         print(f"Episode {episode_id} had job id {tts_job_id} but the TTS service doesn't know about it; will retry.")
 
 
+@serialized
 def reconcile_tts_state_on_boot() -> None:
     """Reconcile local TTS job state against the TTS service at startup.
 
@@ -230,6 +235,7 @@ def retention_cutoff(now: datetime | None = None) -> datetime | None:
     return (now or datetime.now(UTC)) - timedelta(days=Config.EPISODE_RETENTION_DAYS)
 
 
+@serialized
 def age_off_episodes(cutoff: datetime) -> None:
     """Delete episodes published before the cutoff along with their audio and raw mail."""
     removed = episode_ops.delete_episodes_published_before(cutoff.replace(tzinfo=None))
@@ -247,18 +253,25 @@ def ingest_new_emails() -> int:
         return 0
 
     source = ImapSource()
+    created = []
+
+    def persist(email):
+        episode = process_incoming(email)
+        if episode is not None:
+            created.append(episode)
+
     try:
-        emails = source.fetch()
+        source.fetch(on_message=persist)
     except Exception as e:
         print(f"IMAP poll failed: {e}")
         return 0
 
-    created = process_many(emails)
     if created:
         print(f"Ingested {len(created)} new episode(s) from IMAP")
     return len(created)
 
 
+@serialized
 def main_poll_loop() -> list[Episode]:
     """Age off, ingest, then move TTS work forward. The scheduled entrypoint."""
     cutoff = retention_cutoff()

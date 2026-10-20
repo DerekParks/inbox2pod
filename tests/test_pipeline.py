@@ -374,13 +374,13 @@ def test_ingest_new_emails_is_a_noop_without_imap(monkeypatch):
 
 
 def test_ingest_new_emails_creates_episodes(tmp_storage, ops, monkeypatch):
-    monkeypatch.setattr(ImapSource, "fetch", lambda self: [make_email(message_id="imap-1"), make_email(message_id="imap-2")])
+    monkeypatch.setattr(ImapSource, "fetch", lambda self, on_message: [on_message(make_email(message_id=mid)) for mid in ("imap-1", "imap-2")])
     assert ingest_new_emails() == 2
     assert len(ops.get_episode_ids()) == 2
 
 
 def test_ingest_new_emails_survives_an_imap_outage(monkeypatch, capsys):
-    def explode(self):
+    def explode(self, on_message):
         raise OSError("imap down")
 
     monkeypatch.setattr(ImapSource, "fetch", explode)
@@ -441,3 +441,106 @@ def test_requests_errors_are_not_swallowed_by_the_client(tmp_storage, tts):
     tts.get(f"{TTS_ROOT}/tts/jobs", status_code=500)
     with pytest.raises(requests.exceptions.HTTPError):
         tts_service.get_jobs()
+
+
+@pytest.fixture
+def file_database(monkeypatch, tmp_path):
+    # An on-disk database lets worker threads share the same SQLite state.
+    monkeypatch.setattr(Config, "DATABASE_URI", f"sqlite:///{tmp_path}/episodes.db")
+
+
+def test_duplicate_delivery_preserves_original_raw(tmp_storage, ops, monkeypatch):
+    from inbox2pod import pipeline
+
+    email = make_email()
+    extract = pipeline.extract_email
+
+    def interleave(raw):
+        monkeypatch.setattr(pipeline, "extract_email", extract)
+        process_incoming(email)
+        return extract(raw)
+
+    monkeypatch.setattr(pipeline, "extract_email", interleave)
+    process_incoming(email)
+    stored = ops.get_episode(episode_id_for(email))
+    assert open(stored.raw_path, "rb").read() == email.raw_bytes
+
+
+def test_concurrent_deliveries_create_one_intact_episode(file_database, tmp_storage, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from inbox2pod import pipeline
+
+    started, release, second_started = Event(), Event(), Event()
+    extract = pipeline.extract_email
+
+    def slow_extract(raw):
+        started.set()
+        assert release.wait(5)
+        return extract(raw)
+
+    def deliver_again():
+        second_started.set()
+        return process_incoming(make_email())
+
+    monkeypatch.setattr(pipeline, "extract_email", slow_extract)
+    with ThreadPoolExecutor(2) as pool:
+        first = pool.submit(process_incoming, make_email())
+        try:
+            assert started.wait(5)
+            second = pool.submit(deliver_again)
+            assert second_started.wait(5)
+            assert not second.done()
+        finally:
+            release.set()
+        created = first.result()
+        assert second.result() is None
+    assert open(created.raw_path, "rb").read() == make_email().raw_bytes
+    assert len(EpisodeOps().get_episode_ids()) == 1
+
+
+def test_overlapping_poll_cycles_submit_only_once(file_database, tmp_storage, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from unittest.mock import Mock
+
+    from inbox2pod import pipeline
+
+    created = process_incoming(make_email())
+    started, release, second_started = Event(), Event(), Event()
+
+    def submit(text):
+        started.set()
+        assert release.wait(5)
+        return "one-job"
+
+    service = Mock()
+    service.get_jobs.return_value = ([], ["one-job"])
+    service.submit_tts.side_effect = submit
+    monkeypatch.setattr(pipeline, "tts_service", service)
+    monkeypatch.setattr(pipeline, "ingest_new_emails", lambda: 0)
+
+    def poll_again():
+        second_started.set()
+        return main_poll_loop()
+
+    with ThreadPoolExecutor(2) as pool:
+        first = pool.submit(main_poll_loop)
+        try:
+            assert started.wait(5)
+            second = pool.submit(poll_again)
+            assert second_started.wait(5)
+            assert not second.done()
+        finally:
+            release.set()
+        first.result()
+        second.result()
+    service.submit_tts.assert_called_once()
+    assert EpisodeOps().get_episode(created.id).tts_job_id == "one-job"
+
+
+def test_raw_storage_does_not_overwrite_existing_message(tmp_storage):
+    path = store_raw(b"original", "same-id")
+    assert store_raw(b"duplicate", "same-id") == path
+    assert open(path, "rb").read() == b"original"

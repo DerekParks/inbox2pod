@@ -200,3 +200,20 @@ def test_wake_and_wait_healthy_gives_up(requests_mock, tts, wol_enabled, monkeyp
     ):
         assert tts.wake_and_wait_healthy() is False
         assert magic_packet.call_count == 2
+
+
+@pytest.mark.parametrize("operation", ["submit", "list", "download", "delete"])
+def test_tts_requests_have_bounded_timeouts(tts, monkeypatch, operation):
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(Config, "TTS_CONNECT_TIMEOUT", 2)
+    monkeypatch.setattr(Config, "TTS_READ_TIMEOUT", 9)
+    response = Mock()
+    response.json.return_value = {"job_id": "job", "jobs": []}
+    response.content = b"audio"
+    request = Mock(return_value=response)
+    method = {"submit": "post", "list": "get", "download": "get", "delete": "delete"}[operation]
+    monkeypatch.setattr(requests, method, request)
+    {"submit": lambda: tts.submit_tts("hello"), "list": tts.get_jobs,
+     "download": lambda: tts.download_mp3("job"), "delete": lambda: tts.delete_job("job")}[operation]()
+    assert request.call_args.kwargs["timeout"] == (2, 9)

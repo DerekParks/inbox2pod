@@ -9,10 +9,15 @@ The SMTP transaction only parses the envelope and queues the message; the
 pipeline runs on a worker thread so the sending MTA is never held open.
 """
 
+import base64
+import json
 import re
+import time
 from collections.abc import Callable
-from queue import Queue
+from pathlib import Path
+from queue import Empty, Queue
 from threading import Thread
+from uuid import uuid4
 
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import SMTP
@@ -20,12 +25,14 @@ from aiosmtpd.smtp import SMTP
 from inbox2pod.config import Config
 from inbox2pod.ingest.base import IncomingEmail, parse_email
 from inbox2pod.pipeline import process_incoming
+from inbox2pod.storage import durable_mkdir, durable_write, sync_directory
 
 MAX_RCPT_LOG_PREVIEW = 200
 
 # RFC 5321 caps a line at 1000 octets; minified newsletter HTML and unwrapped
 # inline base64 blow straight past that
 MAX_LINE_LENGTH = 65536
+SPOOL_RETRY_SECONDS = 30
 
 
 class LongLineSMTP(SMTP):
@@ -128,6 +135,7 @@ class SmtpReceiver:
         allowed_recipients: list[str] | None = None,
         max_message_size: int | None = None,
         line_length_limit: int | None = None,
+        spool_path: str | None = None,
     ):
         self.host = host or Config.SMTP_LISTEN_HOST
         self.port = port if port is not None else Config.SMTP_LISTEN_PORT
@@ -136,12 +144,15 @@ class SmtpReceiver:
         self.allowed_recipients = (
             allowed_recipients if allowed_recipients is not None else Config.SMTP_ALLOWED_RCPT
         )
+        self.spool_path = Path(spool_path or Config.SMTP_SPOOL_PATH)
         self._process = process or process_incoming
         self._handoff: Queue = Queue()
         self._worker: Thread | None = None
         self._controller: InboxController | None = None
+        self._listener_stopped = False
+        self._stop_requested = False
         self.handler = InboxHandler(
-            on_message=self._handoff.put,
+            on_message=self._enqueue,
             allowed_recipients=self.allowed_recipients,
             max_message_size=self.max_message_size,
         )
@@ -152,8 +163,13 @@ class SmtpReceiver:
 
     def start(self) -> None:
         """Start the worker and the SMTP listener."""
-        self._worker = Thread(target=self._drain, name="inbox2pod-smtp-pipeline", daemon=True)
-        self._worker.start()
+        if self._controller is not None or (self._worker is not None and self._worker.is_alive()):
+            raise RuntimeError("SMTP receiver is already running or draining")
+        self._listener_stopped = False
+        self._stop_requested = False
+        durable_mkdir(self.spool_path)
+        for path in sorted(self.spool_path.glob("*.json")):
+            self._handoff.put(path)
         self._controller = InboxController(
             self.handler,
             hostname=self.host,
@@ -161,31 +177,64 @@ class SmtpReceiver:
             data_size_limit=self.max_message_size,
             line_length_limit=self.line_length_limit,
         )
-        self._controller.start()
+        self._worker = Thread(target=self._drain, name="inbox2pod-smtp-pipeline", daemon=True)
+        self._worker.start()
+        try:
+            self._controller.start()
+        except Exception:
+            self.stop()
+            raise
         print(f"SMTP receiver listening on {self.host}:{self.port}")
 
     def stop(self, timeout: float = 10.0) -> None:
         """Stop the listener, then let the worker finish what it already took."""
-        if self._controller is not None:
+        if self._controller is not None and not self._listener_stopped:
             self._controller.stop()
+            self._listener_stopped = True
         if self._worker is not None:
-            self._handoff.put(None)
+            if not self._stop_requested:
+                self._handoff.put(None)
+                self._stop_requested = True
             self._worker.join(timeout=timeout)
-        self._controller = None
-        self._worker = None
+        if self._worker is None or not self._worker.is_alive():
+            self._controller = None
+            self._worker = None
+
+    def _enqueue(self, email: IncomingEmail) -> None:
+        path = self.spool_path / f"{uuid4().hex}.json"
+        payload = {"raw": base64.b64encode(email.raw_bytes).decode("ascii"), "recipient": email.recipient}
+        durable_write(path, json.dumps(payload).encode("utf-8"))
+        self._handoff.put(path)
 
     def _drain(self) -> None:
+        failed: set[Path] = set()
+        retry_at = time.monotonic() + SPOOL_RETRY_SECONDS
         while True:
-            email = self._handoff.get()
-            if email is None:
+            if time.monotonic() >= retry_at:
+                for pending in sorted(failed):
+                    self._handoff.put(pending)
+                failed.clear()
+                retry_at = time.monotonic() + SPOOL_RETRY_SECONDS
+            try:
+                path = self._handoff.get(timeout=max(0, retry_at - time.monotonic()))
+            except Empty:
+                continue
+            try:
+                if path is None:
+                    return
+                if not self._run_one(path):
+                    failed.add(path)
+            finally:
                 self._handoff.task_done()
-                return
-            self._run_one(email)
 
-    def _run_one(self, email: IncomingEmail) -> None:
+    def _run_one(self, path: Path) -> bool:
         try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            email = parse_email(base64.b64decode(payload["raw"]), default_recipient=payload["recipient"])
             self._process(email)
+            path.unlink()
+            sync_directory(self.spool_path)
+            return True
         except Exception as e:
-            print(f"SMTP pipeline failed: {e}")
-        finally:
-            self._handoff.task_done()
+            print(f"SMTP pipeline failed for {path.name}; retained for retry: {e}")
+            return False
